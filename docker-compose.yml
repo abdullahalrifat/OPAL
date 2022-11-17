@@ -1,0 +1,81 @@
+version: "3.8"
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:6.2.0
+    hostname: zookeeper
+    ports:
+      - 2181:2181
+    environment:
+      - ZOOKEEPER_CLIENT_PORT=2181
+      - ZOOKEEPER_TICK_TIME=2000
+      - ALLOW_ANONYMOUS_LOGIN=yes
+
+  # When scaling the opal-server to multiple nodes and/or multiple workers, we use
+  # a *broadcast* channel to sync between all the instances of opal-server.
+  # Under the hood, this channel is implemented by encode/broadcaster (see link below).
+  # At the moment, the broadcast channel can be either: postgresdb, redis or kafka.
+  # The format of the broadcaster URI string (the one we pass to opal server as `OPAL_BROADCAST_URI`) is specified here:
+  # https://github.com/encode/broadcaster#available-backends
+  kafka_broadcast_channel:
+    image: confluentinc/cp-kafka:6.2.0
+    hostname: kafka
+    ports:
+      # To learn about configuring Kafka for access across networks see
+      # https://www.confluent.io/blog/kafka-client-cannot-connect-to-broker-on-aws-on-docker-etc/
+      - 9092:9092
+      - 29092:29092
+    depends_on:
+      - zookeeper
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT_HOST://localhost:29092,PLAINTEXT://kafka:9092
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_TOPIC_AUTO_CREATE=true
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+
+  kafka-ui:
+    container_name: kafka-ui
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - 8080:8080
+    depends_on:
+      - kafka_broadcast_channel
+    environment:
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      # KAFKA_CLUSTERS_0_NAME: local
+  opal_server:
+    image: permitio/opal-server:latest
+    ports:
+      - "7002:7002"
+    environment:
+      PORT: 7002
+      TZ: "Asia/Bangkok"
+      OPAL_BROADCAST_URI: "kafka://kafka:9092"
+      UVICORN_NUM_WORKERS: 4
+      OPAL_POLICY_REPO_URL: ${OPAL_POLICY_REPO_URL}
+      OPAL_POLICY_REPO_SSH_KEY: ${OPAL_POLICY_REPO_SSH_KEY}
+      OPAL_POLICY_REPO_POLLING_INTERVAL: ${OPAL_POLICY_REPO_POLLING_INTERVAL}
+      OPAL_DATA_CONFIG_SOURCES: ${OPAL_DATA_CONFIG_SOURCES}
+      OPAL_AUTH_PRIVATE_KEY: ${OPAL_AUTH_PRIVATE_KEY}
+      OPAL_AUTH_PUBLIC_KEY: ${OPAL_AUTH_PUBLIC_KEY}
+      OPAL_AUTH_MASTER_TOKEN: ${OPAL_AUTH_MASTER_TOKEN}
+    depends_on:
+      - kafka_broadcast_channel
+
+  opal-client:
+    image: permitio/opal-client:latest
+    ports:
+      - "7001:7001" # OPAL Client
+      - "8181:8181" # OPA
+    environment:
+      OPAL_SERVER_URL: "http://opal_server:7002"
+      OPAL_POLICY_STORE_URL: "http://localhost:8181"
+      OPAL_FETCH_PROVIDER_MODULES: "opal_common.fetcher.providers"
+      OPAL_CLIENT_TOKEN: ${OPAL_CLIENT_TOKEN}
+      OPAL_INLINE_OPA_LOG_FORMAT: "http"
+    depends_on:
+      - opal_server
