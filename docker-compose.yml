@@ -56,26 +56,30 @@ services:
       TZ: "Asia/Bangkok"
       OPAL_BROADCAST_URI: "kafka://kafka:9092"
       UVICORN_NUM_WORKERS: 4
-      OPAL_POLICY_REPO_URL: ${OPAL_POLICY_REPO_URL}
-      OPAL_POLICY_REPO_SSH_KEY: ${OPAL_POLICY_REPO_SSH_KEY}
+      OPAL_POLICY_REPO_URL: ${OPAL_POLICY_REPO_POLICY_BUNDLE_URL}
+      OPAL_POLICY_REPO_SSH_KEY: ${OPAL_POLICY_REPO_SSH_KEY_POLICY_BUNDLE_SERVICE}
       OPAL_POLICY_REPO_POLLING_INTERVAL: ${OPAL_POLICY_REPO_POLLING_INTERVAL}
       OPAL_DATA_CONFIG_SOURCES: ${OPAL_DATA_CONFIG_SOURCES}
       OPAL_AUTH_PRIVATE_KEY: ${OPAL_AUTH_PRIVATE_KEY}
       OPAL_AUTH_PUBLIC_KEY: ${OPAL_AUTH_PUBLIC_KEY}
       OPAL_AUTH_MASTER_TOKEN: ${OPAL_AUTH_MASTER_TOKEN}
+      OPAL_POLICY_REPO_MAIN_BRANCH: ${OPAL_POLICY_REPO_MAIN_BRANCH}
     depends_on:
       - kafka_broadcast_channel
 
   opal-client:
-    image: permitio/opal-client:latest
+    # image: permitio/opal-client:latest
+    build:
+      context: .
     ports:
       - "7001:7001" # OPAL Client
       - "8181:8181" # OPA
     environment:
       OPAL_SERVER_URL: "http://opal_server:7002"
       OPAL_POLICY_STORE_URL: "http://localhost:8181"
-      OPAL_FETCH_PROVIDER_MODULES: "opal_common.fetcher.providers"
+      OPAL_FETCH_PROVIDER_MODULES: "opal_common.fetcher.providers, opal_fetcher_ceph.provider"
       OPAL_CLIENT_TOKEN: ${OPAL_CLIENT_TOKEN}
       OPAL_INLINE_OPA_LOG_FORMAT: "http"
+      OPAL_DATA_TOPICS: ${OPAL_DATA_TOPICS}
     depends_on:
       - opal_server
